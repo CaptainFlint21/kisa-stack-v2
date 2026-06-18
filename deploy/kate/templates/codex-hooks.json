@@ -1,0 +1,28 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "__HOME__/.codex/hooks/codex-session-start.sh",
+            "timeout": 10,
+            "statusMessage": "Loading KISA Wiki context"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "__HOME__/.codex/hooks/codex-user-prompt.sh",
+            "timeout": 10,
+            "statusMessage": "Refreshing KISA Wiki context"
+          }
+        ]
+      }
+    ]
+  }
+}
