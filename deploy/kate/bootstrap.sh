@@ -14,7 +14,7 @@ Usage: bash deploy/kate/bootstrap.sh [options]
 Options:
   --dry-run              Print actions without changing the machine
   --skip-dependencies    Do not install Hermes or RTK when missing
-  --skip-telegram        Render Telegram placeholders without prompting
+  --skip-telegram        Install with Telegram disabled and placeholder values
   -h, --help             Show this help
 
 Environment overrides for non-interactive Telegram rendering:
@@ -76,12 +76,21 @@ install_remote_script() {
   local url="$2"
   local tmp_dir
   tmp_dir="$(mktemp -d)"
-  trap 'rm -rf -- "$tmp_dir"' RETURN
 
   log "Installing $name from its official installer..."
-  run curl -fsSL "$url" -o "$tmp_dir/install.sh"
-  run bash "$tmp_dir/install.sh"
-  trap - RETURN
+  if [ "$dry_run" -eq 1 ]; then
+    run curl -fsSL "$url" -o "$tmp_dir/install.sh"
+    run bash "$tmp_dir/install.sh"
+  else
+    if ! curl -fsSL "$url" -o "$tmp_dir/install.sh"; then
+      rm -rf -- "$tmp_dir"
+      fail "Failed to download the $name installer"
+    fi
+    if ! bash "$tmp_dir/install.sh"; then
+      rm -rf -- "$tmp_dir"
+      fail "$name installer failed"
+    fi
+  fi
   rm -rf -- "$tmp_dir"
 }
 
@@ -124,6 +133,7 @@ render_template() {
   local bot_token="$3"
   local owner_id="$4"
   local group_id="$5"
+  local telegram_enabled="$6"
 
   run mkdir -p "$(dirname "$target")"
   if [ "$dry_run" -eq 1 ]; then
@@ -134,6 +144,7 @@ render_template() {
   TEMPLATE_SOURCE="$source" TEMPLATE_TARGET="$target" \
   KISA_HOME="$HOME" TELEGRAM_BOT_TOKEN="$bot_token" \
   TELEGRAM_OWNER_ID="$owner_id" TELEGRAM_GROUP_ID="$group_id" \
+  TELEGRAM_ENABLED="$telegram_enabled" \
   python3 - <<'PY'
 import os
 from pathlib import Path
@@ -146,6 +157,7 @@ replacements = {
     "__TELEGRAM_BOT_TOKEN__": os.environ["TELEGRAM_BOT_TOKEN"],
     "__TELEGRAM_OWNER_ID__": os.environ["TELEGRAM_OWNER_ID"],
     "__TELEGRAM_GROUP_ID__": os.environ["TELEGRAM_GROUP_ID"],
+    "__TELEGRAM_ENABLED__": os.environ["TELEGRAM_ENABLED"],
 }
 for key, value in replacements.items():
     text = text.replace(key, value)
@@ -168,12 +180,18 @@ if ! command -v hermes >/dev/null 2>&1; then
   [ "$install_dependencies" -eq 1 ] || fail "Hermes is missing and dependency installation is disabled"
   install_remote_script "Hermes" "https://hermes-agent.nousresearch.com/install.sh"
   export PATH="$HOME/.local/bin:$PATH"
+  if [ "$dry_run" -eq 0 ]; then
+    command -v hermes >/dev/null 2>&1 || fail "Hermes installed but is not available in PATH"
+  fi
 fi
 
 if ! command -v rtk >/dev/null 2>&1; then
   [ "$install_dependencies" -eq 1 ] || fail "RTK is missing and dependency installation is disabled"
   install_remote_script "RTK" "https://raw.githubusercontent.com/rtk-ai/rtk/refs/heads/master/install.sh"
   export PATH="$HOME/.local/bin:$PATH"
+  if [ "$dry_run" -eq 0 ]; then
+    command -v rtk >/dev/null 2>&1 || fail "RTK installed but is not available in PATH"
+  fi
 fi
 
 core_skills=(
@@ -211,11 +229,13 @@ if [ "$dry_run" -eq 0 ]; then
   chmod +x "$HOME/.codex/hooks/"*.sh "$HOME/.hermes/hooks/"*.sh
 fi
 
-render_template "$kate_dir/templates/codex-hooks.json" "$HOME/.codex/hooks.json" "" "" ""
+render_template "$kate_dir/templates/codex-hooks.json" "$HOME/.codex/hooks.json" \
+  "" "" "" "false"
 
 bot_token="${TELEGRAM_BOT_TOKEN:-}"
 owner_id="${TELEGRAM_OWNER_ID:-}"
 group_id="${TELEGRAM_GROUP_ID:-}"
+telegram_enabled="true"
 
 if [ "$configure_telegram" -eq 1 ] && [ "$dry_run" -eq 0 ]; then
   if [ -z "$bot_token" ]; then
@@ -230,18 +250,23 @@ if [ "$configure_telegram" -eq 1 ] && [ "$dry_run" -eq 0 ]; then
   fi
 fi
 
-if [ "$configure_telegram" -eq 0 ] || [ "$dry_run" -eq 1 ]; then
+if [ "$configure_telegram" -eq 0 ]; then
+  telegram_enabled="false"
+  bot_token="${bot_token:-DISABLED}"
+  owner_id="${owner_id:-0}"
+  group_id="${group_id:-0}"
+elif [ "$dry_run" -eq 1 ]; then
   bot_token="${bot_token:-SET_WITH_TELEGRAM_BOT_TOKEN}"
   owner_id="${owner_id:-SET_WITH_TELEGRAM_OWNER_ID}"
   group_id="${group_id:-SET_WITH_TELEGRAM_GROUP_ID}"
+else
+  [ -n "$bot_token" ] || fail "Telegram bot token is required"
+  [[ "$owner_id" =~ ^[0-9]+$ ]] || fail "Telegram owner ID must be a positive integer"
+  [[ "$group_id" =~ ^-?[0-9]+$ ]] || fail "Telegram group ID must be an integer"
 fi
 
-[ -n "$bot_token" ] || fail "Telegram bot token is required"
-[ -n "$owner_id" ] || fail "Telegram owner ID is required"
-[ -n "$group_id" ] || fail "Telegram group ID is required"
-
 render_template "$kate_dir/templates/hermes-config.yaml" "$HOME/.hermes/config.yaml" \
-  "$bot_token" "$owner_id" "$group_id"
+  "$bot_token" "$owner_id" "$group_id" "$telegram_enabled"
 
 for runtime in codex hermes; do
   seed_page "$runtime" overview "Overview"
@@ -269,9 +294,9 @@ Bootstrap files are prepared.
 Backup snapshot: $backup_root
 
 Manual authentication and activation are intentionally separate:
-  1. hermes auth add openai-codex --type oauth --no-browser
+  1. hermes auth add openai-codex --type oauth --no-browser --manual-paste
   2. hermes model
-  3. hermes hooks list
+  3. hermes --accept-hooks -z "Reply with OK. Do not use tools."
   4. hermes hooks doctor
   5. hermes mcp test codex
   6. hermes gateway install
