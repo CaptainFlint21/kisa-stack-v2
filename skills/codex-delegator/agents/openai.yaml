@@ -1,0 +1,4 @@
+interface:
+  display_name: "Codex Delegator"
+  short_description: "Delegate repository work to Codex CLI through MCP."
+  default_prompt: "Delegate this repository coding task to the official Codex MCP server. Resolve an absolute cwd, start with the codex tool using workspace-write and on-request approval, retain the returned threadId, and continue with codex-reply until implementation and verification are complete."
