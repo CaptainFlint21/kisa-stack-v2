@@ -51,7 +51,7 @@ hooks:
       timeout: 10
 
 telegram:
-  enabled: true
+  enabled: __TELEGRAM_ENABLED__
   token: "__TELEGRAM_BOT_TOKEN__"
   dm_policy: "allowlist"
   dm_allow_from:
