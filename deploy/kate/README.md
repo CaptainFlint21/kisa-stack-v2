@@ -10,6 +10,10 @@ is delegated to Codex CLI through the official `codex mcp-server` interface.
 - No sudo password is stored in Hermes.
 - Root/sudo remains an interactive user approval.
 - Hermes can access files allowed by the Kate user's normal Unix permissions.
+- The initial Codex MCP `codex` call uses `workspace-write` with
+  `approval-policy: never`; `codex-reply` inherits that thread contract.
+- Codex MCP delegation is limited to file edits inside the absolute `cwd` and
+  local verification; sudo, network, and outside-workspace writes are blockers.
 - Telegram DMs and group commands are allowlisted to one owner user ID.
 - The bot must be added to only one approved private group.
 - Group messages require a mention or reply.
@@ -137,13 +141,27 @@ Use a disposable repository first. From Telegram, ask Hermes to:
 2. create a feature branch;
 3. make a small tested change;
 4. continue the same Codex MCP thread until tests pass;
-5. commit, push the feature branch, and open a draft PR.
+5. inspect the diff and test output;
+6. after user authorization, commit, push the feature branch, and open a draft
+   PR from Hermes.
 
 Acceptance criteria:
 
 - Hermes invokes `codex`, retains its `threadId`, then uses `codex-reply`;
 - Codex receives an absolute `cwd`;
-- sandbox is `workspace-write` and approval policy is `on-request`;
+- the initial `codex` call uses sandbox `workspace-write` and approval policy
+  `never`;
+- `codex-reply` is called with the same `threadId` and a prompt, and inherits
+  the initial thread's sandbox and approval policy;
+- Codex edits only inside `cwd` and runs local checks;
+- Codex does not create or switch branches, commit, push, open PRs, use network,
+  use sudo, or write outside `cwd`;
+- sudo, network, outside-workspace writes, elicitation-not-supported, and
+  approval-related errors are reported as blockers without retrying the approval
+  path;
+- Hermes prepares the feature branch before delegation;
+- Hermes inspects diff and tests after Codex returns;
+- Hermes owns user-authorized commit, push, and draft PR creation;
 - no direct push reaches `main`;
 - the final Telegram response includes changed files, checks, branch, and PR URL.
 
