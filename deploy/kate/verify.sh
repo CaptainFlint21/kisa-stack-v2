@@ -21,6 +21,7 @@ check "install.sh syntax" bash -n "$repo_dir/install.sh"
 check "bootstrap syntax" bash -n "$repo_dir/deploy/kate/bootstrap.sh"
 check "rollback syntax" bash -n "$repo_dir/deploy/kate/rollback.sh"
 check "installer regression test" bash "$repo_dir/tests/test-install.sh"
+check "codex-delegator compatibility contract" bash "$repo_dir/tests/test-codex-delegator-contract.sh"
 
 for hook in "$repo_dir"/deploy/kate/hooks/*.sh; do
   check "hook syntax: $(basename "$hook")" bash -n "$hook"
@@ -30,6 +31,7 @@ if command -v shellcheck >/dev/null 2>&1; then
   check "ShellCheck" shellcheck \
     "$repo_dir/install.sh" \
     "$repo_dir/tests/test-install.sh" \
+    "$repo_dir/tests/test-codex-delegator-contract.sh" \
     "$repo_dir/deploy/kate/bootstrap.sh" \
     "$repo_dir/deploy/kate/rollback.sh" \
     "$repo_dir/deploy/kate/verify.sh" \
