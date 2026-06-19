@@ -14,9 +14,10 @@ is delegated to Codex CLI through the official `codex mcp-server` interface.
   `approval-policy: never`; `codex-reply` inherits that thread contract.
 - Codex MCP delegation is limited to file edits inside the absolute `cwd` and
   local verification; sudo, network, and outside-workspace writes are blockers.
-- Telegram DMs and group commands are allowlisted to one owner user ID.
-- The bot must be added to only one approved private group.
-- Group messages require a mention or reply.
+- Telegram DMs are allowlisted to one owner user ID.
+- The bot responds in one approved private group; membership in that group is
+  the group authorization boundary.
+- Every group command requires a mention or reply.
 - Force-push, history rewrites, and direct pushes to `main` are forbidden.
 - OAuth state, Telegram tokens, and IDs stay under `~/.hermes` with mode `0600`.
 
@@ -129,9 +130,11 @@ Run these checks after the gateway is online:
 1. Send a DM from the owner account. Hermes must answer.
 2. Mention or reply to the bot from the owner account in the approved group.
    Hermes must answer in that group.
-3. Send the same command from another group member. Hermes must ignore it.
+3. Mention or reply to the bot from another member of the approved group.
+   Hermes must answer in that group.
 4. Send an ordinary unmentioned group message. Hermes must ignore it.
-5. Confirm the bot is not present in any other group.
+5. Mention the bot from another group. Hermes must ignore it.
+6. Confirm the bot is not present in any other group.
 
 ## 8. End-to-end Codex delegation
 
