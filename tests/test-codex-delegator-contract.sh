@@ -29,6 +29,7 @@ contains "$profile" "codex-delegator" || fail "core profile must include codex-d
 
 contains "$skill" "sandbox: workspace-write" || fail "skill must require workspace-write sandbox"
 contains "$skill" "approval-policy: never" || fail "skill must require approval-policy never"
+# shellcheck disable=SC2016 # Backticks are literal Markdown in the contract text.
 contains "$skill" 'Never select `danger-full-access`' ||
   fail "skill must preserve the danger-full-access prohibition"
 contains "$skill" "the initial \`codex\` call must use" ||
