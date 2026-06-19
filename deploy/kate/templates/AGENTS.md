@@ -63,7 +63,8 @@
 - Не читай, не печатай и не коммить секреты. `.env`, OAuth state, bot tokens и
   credential files трогай только по явному запросу.
 - Если команда уперлась в sandbox или network restriction — запроси approval,
-  не обходи ограничение.
+  не обходи ограничение. Исключение: в делегированных сессиях с
+  `approval-policy: never` approval недоступен; остановись и сообщи blocker.
 
 ---
 
