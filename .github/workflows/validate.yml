@@ -20,6 +20,8 @@ jobs:
         run: |
           bash -n install.sh
           bash -n tests/test-install.sh
+          bash -n tests/test-codex-delegator-contract.sh
+          bash -n tests/test-kate-telegram-policy.sh
           bash -n deploy/kate/bootstrap.sh
           bash -n deploy/kate/rollback.sh
           bash -n deploy/kate/verify.sh
@@ -28,8 +30,13 @@ jobs:
       - name: Run ShellCheck
         run: |
           shellcheck install.sh tests/test-install.sh \
+            tests/test-codex-delegator-contract.sh \
+            tests/test-kate-telegram-policy.sh \
             deploy/kate/bootstrap.sh deploy/kate/rollback.sh \
             deploy/kate/verify.sh deploy/kate/hooks/*.sh
 
       - name: Run installer regression tests
-        run: bash tests/test-install.sh
+        run: |
+          bash tests/test-install.sh
+          bash tests/test-codex-delegator-contract.sh
+          bash tests/test-kate-telegram-policy.sh
