@@ -60,6 +60,10 @@ telegram:
   group_policy: "allowlist"
   group_allow_from:
     - "__TELEGRAM_OWNER_ID__"
+  allowed_chats:
+    - "__TELEGRAM_GROUP_ID__"
+  group_allowed_chats:
+    - "__TELEGRAM_GROUP_ID__"
   require_mention: true
   home_channel:
     platform: "telegram"
