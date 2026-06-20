@@ -19,11 +19,14 @@ check() {
 
 check "install.sh syntax" bash -n "$repo_dir/install.sh"
 check "codex-wrapper syntax" bash -n "$repo_dir/deploy/kate/codex-wrapper.sh"
+check "user-proxy syntax" bash -n "$repo_dir/deploy/kate/user-proxy.sh"
+check "user-proxy loader syntax" bash -n "$repo_dir/deploy/kate/templates/load-codex-proxy.bash"
 check "bootstrap syntax" bash -n "$repo_dir/deploy/kate/bootstrap.sh"
 check "rollback syntax" bash -n "$repo_dir/deploy/kate/rollback.sh"
 check "installer regression test" bash "$repo_dir/tests/test-install.sh"
 check "codex-delegator compatibility contract" bash "$repo_dir/tests/test-codex-delegator-contract.sh"
 check "Codex proxy wrapper regression test" bash "$repo_dir/tests/test-codex-wrapper.sh"
+check "Kate user proxy regression test" bash "$repo_dir/tests/test-kate-user-proxy.sh"
 check "Telegram access policy contract" bash "$repo_dir/tests/test-kate-telegram-policy.sh"
 
 for hook in "$repo_dir"/deploy/kate/hooks/*.sh; do
@@ -36,9 +39,12 @@ if command -v shellcheck >/dev/null 2>&1; then
     "$repo_dir/tests/test-install.sh" \
     "$repo_dir/tests/test-codex-delegator-contract.sh" \
     "$repo_dir/tests/test-codex-wrapper.sh" \
+    "$repo_dir/tests/test-kate-user-proxy.sh" \
     "$repo_dir/tests/test-kate-telegram-policy.sh" \
     "$repo_dir/deploy/kate/bootstrap.sh" \
     "$repo_dir/deploy/kate/codex-wrapper.sh" \
+    "$repo_dir/deploy/kate/user-proxy.sh" \
+    "$repo_dir/deploy/kate/templates/load-codex-proxy.bash" \
     "$repo_dir/deploy/kate/rollback.sh" \
     "$repo_dir/deploy/kate/verify.sh" \
     "$repo_dir"/deploy/kate/hooks/*.sh
