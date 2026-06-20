@@ -172,8 +172,15 @@ done
 
 [ -f "$repo_dir/install.sh" ] || fail "Run this script from a kisa-stack-v2 checkout"
 
-if ! command -v codex >/dev/null 2>&1; then
-  fail "Codex CLI is not installed or not in PATH on Kate"
+snapshot_path ".local/bin/codex"
+
+if [ "$dry_run" -eq 1 ]; then
+  run bash "$kate_dir/codex-wrapper.sh" repair --dry-run
+else
+  bash "$kate_dir/codex-wrapper.sh" repair
+  bash "$kate_dir/codex-wrapper.sh" doctor
+  export PATH="$HOME/.local/bin:$PATH"
+  command -v codex >/dev/null 2>&1 || fail "Codex proxy wrapper is not in PATH on Kate"
 fi
 
 if ! command -v hermes >/dev/null 2>&1; then

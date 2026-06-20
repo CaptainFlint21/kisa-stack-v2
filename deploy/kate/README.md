@@ -46,6 +46,8 @@ The bootstrap:
 - snapshots every affected path under `~/.kisa-backups/<timestamp>/`;
 - installs the `core` profile into `~/.agents/skills` and `~/.hermes/skills`;
 - installs the personalized KISA `~/.codex/AGENTS.md`;
+- repairs the user `~/.local/bin/codex` proxy wrapper as a regular mode-0700
+  file that survives npm launcher rewrites;
 - initializes RTK for Codex and Hermes;
 - installs Codex and Hermes Wiki hooks;
 - creates the initial `~/LLM Wiki/{codex,hermes}/pages/` structure;
@@ -121,7 +123,36 @@ bash deploy/kate/verify.sh --offline
 
 The workflow covers shell syntax, optional ShellCheck, installer dry-run,
 idempotent re-run, backup-on-drift, core metadata, the VTT fixture, installed
-skill drift, RTK, Hermes doctor, hook doctor, and the Codex MCP connection.
+skill drift, the Codex proxy wrapper doctor, RTK, Hermes doctor, hook doctor,
+and the Codex MCP connection.
+
+## 6.1. Repair Codex proxy wrapper after Codex CLI updates
+
+Codex CLI updates installed through npm may replace `~/.local/bin/codex` with an
+npm-managed launcher or symlink. Kate needs `~/.local/bin/codex` to be a regular
+mode-0700 proxy wrapper so Hermes/Codex MCP traffic inherits
+`~/.hermes/codex-proxy.env` without printing proxy values. The wrapper resolves
+the current real Codex CLI under `~/.nvm/versions/node/*/bin/codex` at runtime,
+so it keeps working after Node or Codex version changes.
+
+Run the штатный repair and doctor after any Codex CLI/npm update:
+
+```bash
+cd ~/src/kisa-stack-v2
+bash deploy/kate/codex-wrapper.sh repair
+bash deploy/kate/codex-wrapper.sh doctor
+codex --version
+```
+
+The regular KISA core sync also repairs the wrapper:
+
+```bash
+bash install.sh sync core --codex --hermes
+```
+
+`doctor` fails when the wrapper is missing, is a symlink, lacks the proxy-env
+reference, has the wrong mode, or no real NVM Codex CLI can be found. It never
+prints proxy environment values.
 
 ## 7. Telegram acceptance
 
@@ -174,6 +205,7 @@ Acceptance criteria:
 cd ~/src/kisa-stack-v2
 git pull --ff-only
 bash install.sh sync core --codex --hermes
+bash deploy/kate/codex-wrapper.sh doctor
 bash deploy/kate/verify.sh
 hermes gateway restart
 ```

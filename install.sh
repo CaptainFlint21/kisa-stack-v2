@@ -74,6 +74,36 @@ same_tree() {
     "$source_dir" "$target_dir" >/dev/null 2>&1
 }
 
+selection_includes() {
+  local wanted="$1"
+  local name
+  for name in "${names[@]}"; do
+    [ "$name" = "$wanted" ] && return 0
+  done
+  return 1
+}
+
+maintain_kate_codex_wrapper() {
+  [ "$want_codex" -eq 1 ] || return 0
+  selection_includes "codex-delegator" || return 0
+
+  local wrapper_script="$repo_dir/deploy/kate/codex-wrapper.sh"
+  [ -f "$wrapper_script" ] || return 0
+
+  case "$action" in
+    doctor)
+      bash "$wrapper_script" doctor
+      ;;
+    install|sync)
+      if [ "$dry_run" -eq 1 ]; then
+        bash "$wrapper_script" repair --dry-run
+      else
+        bash "$wrapper_script" repair
+      fi
+      ;;
+  esac
+}
+
 resolve_selection() {
   local selection="$1"
   local profile_file="$profiles_dir/$selection.txt"
@@ -224,6 +254,8 @@ targets=()
 [ "$want_hermes" -eq 1 ] && targets+=("${HERMES_HOME:-$HOME/.hermes}/skills")
 
 resolve_selection "$selection"
+
+maintain_kate_codex_wrapper
 
 status=0
 for target_root in "${targets[@]}"; do

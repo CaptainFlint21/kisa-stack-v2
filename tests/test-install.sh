@@ -9,11 +9,22 @@ export HOME="$tmp_home"
 export CODEX_SKILLS_DIR="$HOME/.agents/skills"
 export HERMES_HOME="$HOME/.hermes"
 
+mkdir -p "$HOME/.hermes" "$HOME/.nvm/versions/node/v24.14.1/bin"
+printf 'KISA_PROXY_TEST=installer\r\n' > "$HOME/.hermes/codex-proxy.env"
+chmod 600 "$HOME/.hermes/codex-proxy.env"
+cat > "$HOME/.nvm/versions/node/v24.14.1/bin/codex" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'codex-test\n'
+EOF
+chmod +x "$HOME/.nvm/versions/node/v24.14.1/bin/codex"
+
 bash "$repo_dir/install.sh" install core --codex --hermes --dry-run
 [ ! -e "$CODEX_SKILLS_DIR" ]
 [ ! -e "$HERMES_HOME/skills" ]
 
 bash "$repo_dir/install.sh" install core --codex --hermes
+bash "$repo_dir/deploy/kate/codex-wrapper.sh" doctor
 bash "$repo_dir/install.sh" doctor core --codex --hermes
 
 for skill in researcher gamer-signal stream-timecodes elevenlabs-living-voice emotional-support telegram-chat-wiki codex-delegator; do
