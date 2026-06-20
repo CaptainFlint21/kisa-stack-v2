@@ -26,7 +26,7 @@ security:
 
 mcp_servers:
   codex:
-    command: "codex"
+    command: "__HOME__/.local/bin/codex-hermes-proxy"
     args: ["mcp-server"]
     timeout: 900
     connect_timeout: 60

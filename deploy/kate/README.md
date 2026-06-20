@@ -20,8 +20,13 @@ is delegated to Codex CLI through the official `codex mcp-server` interface.
 - Every group command requires a mention or reply.
 - Force-push, history rewrites, and direct pushes to `main` are forbidden.
 - OAuth state, Telegram tokens, and IDs stay under `~/.hermes` with mode `0600`.
-- Codex proxy secrets are sourced from `~/.hermes/codex-proxy.env`; generated
-  caches and shell startup loaders must not print proxy values.
+- Ordinary Codex CLI uses `~/.local/bin/codex` and the common Codex proxy source
+  `~/.hermes/codex-proxy.env`.
+- Hermes MCP uses the separate absolute launcher
+  `~/.local/bin/codex-hermes-proxy`, which loads only
+  `~/.hermes/hermes-proxy.env`.
+- Generated caches, shell startup loaders, doctors, and launchers must not print
+  proxy values.
 
 ## 1. Checkout
 
@@ -47,9 +52,12 @@ The bootstrap:
 - installs Hermes and RTK from their official installers when missing;
 - snapshots every affected path under `~/.kisa-backups/<timestamp>/`;
 - installs the `core` profile into `~/.agents/skills` and `~/.hermes/skills`;
-- installs the personalized KISA `~/.codex/AGENTS.md`;
+- installs the personalized KISA `~/.codex/AGENTS.md` and
+  `~/.codex/hooks.json`, with managed-file backups before overwrite;
 - repairs the user `~/.local/bin/codex` proxy wrapper as a regular mode-0700
   file that survives npm launcher rewrites;
+- installs or repairs the Hermes MCP launcher
+  `~/.local/bin/codex-hermes-proxy` as a regular mode-0700 file;
 - installs the Kate Codex user-proxy flow from `~/.hermes/codex-proxy.env` to
   a mode-0600 systemd user environment cache at
   `~/.config/environment.d/90-codex-proxy.conf`;
@@ -57,8 +65,9 @@ The bootstrap:
 - installs Codex and Hermes Wiki hooks;
 - creates the initial `~/LLM Wiki/{codex,hermes}/pages/` structure;
 - renders a mode-0600 Hermes configuration with the local Telegram credentials;
-- configures the `codex` MCP server as `codex mcp-server` with a 900-second tool
-  timeout and no parallel calls to one server.
+- configures the `codex` MCP server as
+  `~/.local/bin/codex-hermes-proxy mcp-server` with a 900-second tool timeout
+  and no parallel calls to one server.
 
 The bootstrap does not authenticate OAuth or start the gateway. Those remain
 interactive so credentials are not accidentally shared or logged.
@@ -120,16 +129,21 @@ Full verification:
 bash deploy/kate/verify.sh
 ```
 
-Repository-only verification without live Hermes/provider calls:
+Repository-only verification before live sync:
 
 ```bash
 bash deploy/kate/verify.sh --offline
 ```
 
-The workflow covers shell syntax, optional ShellCheck, installer dry-run,
-idempotent re-run, backup-on-drift, core metadata, the VTT fixture, installed
-skill drift, the Codex proxy wrapper doctor, the Kate user-proxy regression
-test, RTK, Hermes doctor, hook doctor, and the Codex MCP connection.
+Offline verification covers shell syntax, optional ShellCheck, installer
+dry-run, idempotent re-run, backup-on-drift, core metadata, the VTT fixture, and
+temp-HOME regression tests. It intentionally skips live installed-skill,
+launcher, global Codex config, Hermes config, CLI availability, and MCP drift
+doctors so it can pass before the live sync stage.
+
+Full verification additionally checks installed skill drift, the Codex proxy
+wrapper doctor, the global Codex config doctor, RTK, Hermes doctor, hook doctor,
+and the Codex MCP connection.
 
 ## 6.1. Repair Codex proxy wrapper after Codex CLI updates
 
@@ -161,7 +175,7 @@ prints proxy environment values.
 
 ## 6.2. Kate Codex user proxy hardening
 
-Kate keeps the Codex proxy secret source separate from Hermes:
+Kate keeps the ordinary Codex proxy secret source separate from Hermes:
 
 - Codex source: `~/.hermes/codex-proxy.env`
 - Hermes source: `~/.hermes/hermes-proxy.env`
@@ -210,6 +224,53 @@ exactly one loader block in each startup file.
 
 This workflow does not configure Git, npm, pnpm, sudoers, or passwordless sudo.
 Those tools inherit proxy settings only through the user environment.
+
+## 6.3. Global Codex config and Hermes MCP launcher
+
+Kate manages global Codex instructions and hooks from repository templates:
+
+- `deploy/kate/templates/AGENTS.md` -> `~/.codex/AGENTS.md`
+- `deploy/kate/templates/codex-hooks.json` -> `~/.codex/hooks.json`
+- `deploy/kate/codex-global-config.sh` -> global install/sync/doctor workflow
+
+Install or repair the managed files and the Hermes MCP launcher:
+
+```bash
+cd ~/src/kisa-stack-v2
+bash deploy/kate/codex-global-config.sh install
+```
+
+Sync only files already marked as KISA-managed:
+
+```bash
+bash deploy/kate/codex-global-config.sh sync
+```
+
+Validate drift and the canonical Hermes MCP command:
+
+```bash
+bash deploy/kate/codex-global-config.sh doctor
+```
+
+`install` backs up existing targets before overwrite. `sync` refuses unmanaged
+Codex instruction, hook, and launcher files, backs up drifted managed files, and
+normalizes duplicate RTK includes in `AGENTS.md`. Both `install` and `sync` also
+canonicalize only the known Hermes MCP command in an existing
+`~/.hermes/config.yaml`, backing it up first and preserving unrelated config
+content such as Telegram policy and credentials. They do not invent a missing
+Hermes config; `doctor` reports that as drift. `doctor` is read-only and reports
+drift without changing files.
+
+The Hermes launcher is:
+
+```text
+~/.local/bin/codex-hermes-proxy
+```
+
+It is a regular mode-0700 file, loads only `~/.hermes/hermes-proxy.env`,
+normalizes CRLF env files, clears inherited common Codex proxy variables before
+loading Hermes values, resolves the real NVM Codex CLI at runtime, and then
+execs `codex mcp-server`.
 
 ## 7. Telegram acceptance
 

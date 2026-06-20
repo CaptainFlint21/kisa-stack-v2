@@ -65,6 +65,11 @@
 - Если команда уперлась в sandbox или network restriction — запроси approval,
   не обходи ограничение. Исключение: в делегированных сессиях с
   `approval-policy: never` approval недоступен; остановись и сообщи blocker.
+- В делегированной Codex MCP-сессии для Hermes считай `approval-policy: never`
+  обязательным контрактом: не используй sudo, network или запись вне `cwd`;
+  если это нужно для задачи — сообщи blocker вместо retry/approval path.
+- В делегированной Codex MCP-сессии Hermes владеет Git orchestration: ветки,
+  commit, push, PR и history rewrite не выполняй из Codex.
 
 ---
 

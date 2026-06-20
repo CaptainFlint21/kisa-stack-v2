@@ -44,7 +44,9 @@ restore_relative() {
 
 restore_relative ".codex/AGENTS.md"
 restore_relative ".codex/hooks.json"
+restore_relative ".codex/.kisa-managed"
 restore_relative ".codex/hooks"
+restore_relative ".local/bin/codex-hermes-proxy"
 restore_relative ".config/kate-proxy"
 restore_relative ".config/environment.d/90-codex-proxy.conf"
 restore_relative ".profile"

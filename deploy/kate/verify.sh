@@ -19,6 +19,7 @@ check() {
 
 check "install.sh syntax" bash -n "$repo_dir/install.sh"
 check "codex-wrapper syntax" bash -n "$repo_dir/deploy/kate/codex-wrapper.sh"
+check "codex-global-config syntax" bash -n "$repo_dir/deploy/kate/codex-global-config.sh"
 check "user-proxy syntax" bash -n "$repo_dir/deploy/kate/user-proxy.sh"
 check "user-proxy loader syntax" bash -n "$repo_dir/deploy/kate/templates/load-codex-proxy.bash"
 check "bootstrap syntax" bash -n "$repo_dir/deploy/kate/bootstrap.sh"
@@ -26,6 +27,7 @@ check "rollback syntax" bash -n "$repo_dir/deploy/kate/rollback.sh"
 check "installer regression test" bash "$repo_dir/tests/test-install.sh"
 check "codex-delegator compatibility contract" bash "$repo_dir/tests/test-codex-delegator-contract.sh"
 check "Codex proxy wrapper regression test" bash "$repo_dir/tests/test-codex-wrapper.sh"
+check "Kate global Codex config regression test" bash "$repo_dir/tests/test-kate-global-codex-config.sh"
 check "Kate user proxy regression test" bash "$repo_dir/tests/test-kate-user-proxy.sh"
 check "Telegram access policy contract" bash "$repo_dir/tests/test-kate-telegram-policy.sh"
 
@@ -39,9 +41,11 @@ if command -v shellcheck >/dev/null 2>&1; then
     "$repo_dir/tests/test-install.sh" \
     "$repo_dir/tests/test-codex-delegator-contract.sh" \
     "$repo_dir/tests/test-codex-wrapper.sh" \
+    "$repo_dir/tests/test-kate-global-codex-config.sh" \
     "$repo_dir/tests/test-kate-user-proxy.sh" \
     "$repo_dir/tests/test-kate-telegram-policy.sh" \
     "$repo_dir/deploy/kate/bootstrap.sh" \
+    "$repo_dir/deploy/kate/codex-global-config.sh" \
     "$repo_dir/deploy/kate/codex-wrapper.sh" \
     "$repo_dir/deploy/kate/user-proxy.sh" \
     "$repo_dir/deploy/kate/templates/load-codex-proxy.bash" \
@@ -52,18 +56,18 @@ else
   echo "WARN ShellCheck is not installed; static shell lint skipped."
 fi
 
-check "core installed for Codex" bash "$repo_dir/install.sh" doctor core --codex
-check "core installed for Hermes" bash "$repo_dir/install.sh" doctor core --hermes
-check "Codex proxy wrapper doctor" bash "$repo_dir/deploy/kate/codex-wrapper.sh" doctor
-check "Codex CLI available" codex --version
-check "RTK available" rtk --version
-
 if [ "$offline" -eq 0 ]; then
+  check "core installed for Codex" bash "$repo_dir/install.sh" doctor core --codex
+  check "core installed for Hermes" bash "$repo_dir/install.sh" doctor core --hermes
+  check "Codex proxy wrapper doctor" bash "$repo_dir/deploy/kate/codex-wrapper.sh" doctor
+  check "global Codex config doctor" bash "$repo_dir/deploy/kate/codex-global-config.sh" doctor
+  check "Codex CLI available" codex --version
+  check "RTK available" rtk --version
   check "Hermes doctor" hermes doctor
   check "Hermes hooks doctor" hermes hooks doctor
   check "Codex MCP connection" hermes mcp test codex
 else
-  echo "WARN Offline mode: Hermes runtime checks skipped."
+  echo "WARN Offline mode: live installation drift and runtime checks skipped."
 fi
 
 if [ "$failures" -ne 0 ]; then
