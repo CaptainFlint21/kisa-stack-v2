@@ -173,6 +173,7 @@ done
 [ -f "$repo_dir/install.sh" ] || fail "Run this script from a kisa-stack-v2 checkout"
 
 snapshot_path ".local/bin/codex"
+snapshot_path ".local/bin/codex-hermes-proxy"
 snapshot_path ".config/kate-proxy"
 snapshot_path ".config/environment.d/90-codex-proxy.conf"
 snapshot_path ".profile"
@@ -220,6 +221,7 @@ core_skills=(
 
 snapshot_path ".codex/AGENTS.md"
 snapshot_path ".codex/hooks.json"
+snapshot_path ".codex/.kisa-managed"
 snapshot_path ".codex/hooks"
 snapshot_path ".hermes/config.yaml"
 snapshot_path ".hermes/hooks"
@@ -229,8 +231,11 @@ for skill in "${core_skills[@]}"; do
 done
 
 run mkdir -p "$HOME/.codex" "$HOME/.hermes" "$HOME/.agents/skills"
-run cp "$kate_dir/templates/AGENTS.md" "$HOME/.codex/AGENTS.md"
-run chmod 600 "$HOME/.codex/AGENTS.md"
+if [ "$dry_run" -eq 1 ]; then
+  run bash "$kate_dir/codex-global-config.sh" install --dry-run
+else
+  bash "$kate_dir/codex-global-config.sh" install
+fi
 
 run mkdir -p "$HOME/.codex/hooks" "$HOME/.hermes/hooks"
 for hook in wiki-context.sh codex-session-start.sh codex-user-prompt.sh; do
@@ -242,9 +247,6 @@ done
 if [ "$dry_run" -eq 0 ]; then
   chmod +x "$HOME/.codex/hooks/"*.sh "$HOME/.hermes/hooks/"*.sh
 fi
-
-render_template "$kate_dir/templates/codex-hooks.json" "$HOME/.codex/hooks.json" \
-  "" "" "" "false"
 
 bot_token="${TELEGRAM_BOT_TOKEN:-}"
 owner_id="${TELEGRAM_OWNER_ID:-}"

@@ -6,6 +6,7 @@ on:
       - main
       - codex/kate-hermes-integration
       - codex/kate-user-proxy-hardening
+      - codex/kate-global-config-hardening
   pull_request:
 
 permissions:
@@ -23,9 +24,11 @@ jobs:
           bash -n tests/test-install.sh
           bash -n tests/test-codex-delegator-contract.sh
           bash -n tests/test-codex-wrapper.sh
+          bash -n tests/test-kate-global-codex-config.sh
           bash -n tests/test-kate-user-proxy.sh
           bash -n tests/test-kate-telegram-policy.sh
           bash -n deploy/kate/bootstrap.sh
+          bash -n deploy/kate/codex-global-config.sh
           bash -n deploy/kate/codex-wrapper.sh
           bash -n deploy/kate/user-proxy.sh
           bash -n deploy/kate/templates/load-codex-proxy.bash
@@ -38,9 +41,11 @@ jobs:
           shellcheck install.sh tests/test-install.sh \
             tests/test-codex-delegator-contract.sh \
             tests/test-codex-wrapper.sh \
+            tests/test-kate-global-codex-config.sh \
             tests/test-kate-user-proxy.sh \
             tests/test-kate-telegram-policy.sh \
-            deploy/kate/bootstrap.sh deploy/kate/codex-wrapper.sh deploy/kate/user-proxy.sh \
+            deploy/kate/bootstrap.sh deploy/kate/codex-global-config.sh \
+            deploy/kate/codex-wrapper.sh deploy/kate/user-proxy.sh \
             deploy/kate/templates/load-codex-proxy.bash deploy/kate/rollback.sh \
             deploy/kate/verify.sh deploy/kate/hooks/*.sh
 
@@ -49,5 +54,6 @@ jobs:
           bash tests/test-install.sh
           bash tests/test-codex-delegator-contract.sh
           bash tests/test-codex-wrapper.sh
+          bash tests/test-kate-global-codex-config.sh
           bash tests/test-kate-user-proxy.sh
           bash tests/test-kate-telegram-policy.sh
