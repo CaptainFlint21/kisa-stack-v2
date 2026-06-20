@@ -173,12 +173,19 @@ done
 [ -f "$repo_dir/install.sh" ] || fail "Run this script from a kisa-stack-v2 checkout"
 
 snapshot_path ".local/bin/codex"
+snapshot_path ".config/kate-proxy"
+snapshot_path ".config/environment.d/90-codex-proxy.conf"
+snapshot_path ".profile"
+snapshot_path ".bashrc"
 
 if [ "$dry_run" -eq 1 ]; then
   run bash "$kate_dir/codex-wrapper.sh" repair --dry-run
+  run bash "$kate_dir/user-proxy.sh" install --dry-run
 else
   bash "$kate_dir/codex-wrapper.sh" repair
   bash "$kate_dir/codex-wrapper.sh" doctor
+  bash "$kate_dir/user-proxy.sh" install
+  bash "$kate_dir/user-proxy.sh" doctor
   export PATH="$HOME/.local/bin:$PATH"
   command -v codex >/dev/null 2>&1 || fail "Codex proxy wrapper is not in PATH on Kate"
 fi

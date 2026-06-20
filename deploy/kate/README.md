@@ -20,6 +20,8 @@ is delegated to Codex CLI through the official `codex mcp-server` interface.
 - Every group command requires a mention or reply.
 - Force-push, history rewrites, and direct pushes to `main` are forbidden.
 - OAuth state, Telegram tokens, and IDs stay under `~/.hermes` with mode `0600`.
+- Codex proxy secrets are sourced from `~/.hermes/codex-proxy.env`; generated
+  caches and shell startup loaders must not print proxy values.
 
 ## 1. Checkout
 
@@ -48,6 +50,9 @@ The bootstrap:
 - installs the personalized KISA `~/.codex/AGENTS.md`;
 - repairs the user `~/.local/bin/codex` proxy wrapper as a regular mode-0700
   file that survives npm launcher rewrites;
+- installs the Kate Codex user-proxy flow from `~/.hermes/codex-proxy.env` to
+  a mode-0600 systemd user environment cache at
+  `~/.config/environment.d/90-codex-proxy.conf`;
 - initializes RTK for Codex and Hermes;
 - installs Codex and Hermes Wiki hooks;
 - creates the initial `~/LLM Wiki/{codex,hermes}/pages/` structure;
@@ -123,8 +128,8 @@ bash deploy/kate/verify.sh --offline
 
 The workflow covers shell syntax, optional ShellCheck, installer dry-run,
 idempotent re-run, backup-on-drift, core metadata, the VTT fixture, installed
-skill drift, the Codex proxy wrapper doctor, RTK, Hermes doctor, hook doctor,
-and the Codex MCP connection.
+skill drift, the Codex proxy wrapper doctor, the Kate user-proxy regression
+test, RTK, Hermes doctor, hook doctor, and the Codex MCP connection.
 
 ## 6.1. Repair Codex proxy wrapper after Codex CLI updates
 
@@ -153,6 +158,58 @@ bash install.sh sync core --codex --hermes
 `doctor` fails when the wrapper is missing, is a symlink, lacks the proxy-env
 reference, has the wrong mode, or no real NVM Codex CLI can be found. It never
 prints proxy environment values.
+
+## 6.2. Kate Codex user proxy hardening
+
+Kate keeps the Codex proxy secret source separate from Hermes:
+
+- Codex source: `~/.hermes/codex-proxy.env`
+- Hermes source: `~/.hermes/hermes-proxy.env`
+- generated systemd cache: `~/.config/environment.d/90-codex-proxy.conf`
+- shell loader: `~/.config/kate-proxy/load-codex-proxy.bash`
+- sync command: `~/.config/kate-proxy/sync-codex-proxy-env.bash`
+
+Install or repair the flow:
+
+```bash
+cd ~/src/kisa-stack-v2
+bash deploy/kate/user-proxy.sh install
+```
+
+Refresh the generated cache after editing `~/.hermes/codex-proxy.env`:
+
+```bash
+bash deploy/kate/user-proxy.sh sync
+```
+
+Validate the local contract:
+
+```bash
+bash deploy/kate/user-proxy.sh doctor
+```
+
+The loader parses shell-style `KEY=value` lines without `eval`, supports quoted
+values and CRLF line endings, and exports only proxy variables. The generated
+cache is replaced atomically from a temp file in its destination directory. The
+doctor checks file modes, startup block idempotency, source/cache equality by
+hash, systemd user-manager environment when available, and Hermes isolation
+without printing proxy values.
+
+For read-only validation of older Kate installs, `doctor` accepts exactly one
+compatible legacy startup block per shell startup file:
+
+```bash
+# Kate Codex proxy environment
+if [ -n "${BASH_VERSION:-}" ] && [ -r "$HOME/.config/kate-proxy/load-codex-proxy.bash" ]; then
+  . "$HOME/.config/kate-proxy/load-codex-proxy.bash"
+fi
+```
+
+`install` normalizes legacy block(s) into the managed marker block and keeps
+exactly one loader block in each startup file.
+
+This workflow does not configure Git, npm, pnpm, sudoers, or passwordless sudo.
+Those tools inherit proxy settings only through the user environment.
 
 ## 7. Telegram acceptance
 
