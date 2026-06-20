@@ -200,13 +200,9 @@ required_source_ready() {
   return "$failed"
 }
 
-quote_env_value() {
+systemd_env_value() {
   local value="$1"
-  value="${value//\\/\\\\}"
-  value="${value//\"/\\\"}"
-  value="${value//\$/\\\$}"
-  value="${value//\`/\\\`}"
-  printf '"%s"' "$value"
+  printf '%s' "${value//\$/\$\$}"
 }
 
 desired_cache_content() {
@@ -214,31 +210,188 @@ desired_cache_content() {
   local lower=""
   for key in HTTP_PROXY HTTPS_PROXY ALL_PROXY NO_PROXY; do
     printf '%s=' "$key"
-    quote_env_value "${PARSED_ENV[$key]}"
+    systemd_env_value "${PARSED_ENV[$key]}"
     printf '\n'
   done
   for key in HTTP_PROXY HTTPS_PROXY ALL_PROXY NO_PROXY; do
     lower="$(lower_key "$key")"
     printf '%s=' "$lower"
-    quote_env_value "${PARSED_ENV[$key]}"
+    systemd_env_value "${PARSED_ENV[$key]}"
     printf '\n'
   done
+}
+
+systemd_lookup_env_value() {
+  local name="$1"
+  local array_name="$2"
+  local -n values="$array_name"
+
+  if [ "${values[$name]+set}" = "set" ]; then
+    SYSTEMD_LOOKUP_VALUE="${values[$name]}"
+  elif [ "${!name+x}" ]; then
+    SYSTEMD_LOOKUP_VALUE="${!name}"
+  else
+    SYSTEMD_LOOKUP_VALUE=""
+  fi
+}
+
+systemd_parse_env_value() {
+  local raw="$1"
+  local array_name="$2"
+  local index=0
+  local char=""
+  local next=""
+  local rest=""
+  local expr=""
+  local name=""
+  local operator=""
+  local word=""
+  local expanded=""
+  local prefix=""
+  SYSTEMD_PARSED_VALUE=""
+
+  while [ "$index" -lt "${#raw}" ]; do
+    char="${raw:index:1}"
+    if [ "$char" = "$" ] && [ $((index + 1)) -lt "${#raw}" ]; then
+      next="${raw:index+1:1}"
+      if [ "$next" = "$" ]; then
+        SYSTEMD_PARSED_VALUE+="$"
+        index=$((index + 2))
+        continue
+      fi
+      if [ "$next" = "{" ]; then
+        rest="${raw:index+2}"
+        if [ "$rest" != "${rest#*\}}" ]; then
+          expr="${rest%%\}*}"
+          if [[ "$expr" =~ ^([A-Za-z_][A-Za-z0-9_]*)(:([-+])(.*))?$ ]]; then
+            name="${BASH_REMATCH[1]}"
+            operator="${BASH_REMATCH[3]}"
+            word="${BASH_REMATCH[4]}"
+            systemd_lookup_env_value "$name" "$array_name"
+            case "$operator" in
+              "")
+                SYSTEMD_PARSED_VALUE+="$SYSTEMD_LOOKUP_VALUE"
+                ;;
+              "-")
+                if [ -n "$SYSTEMD_LOOKUP_VALUE" ]; then
+                  SYSTEMD_PARSED_VALUE+="$SYSTEMD_LOOKUP_VALUE"
+                else
+                  prefix="$SYSTEMD_PARSED_VALUE"
+                  systemd_parse_env_value "$word" "$array_name"
+                  expanded="$SYSTEMD_PARSED_VALUE"
+                  SYSTEMD_PARSED_VALUE="$prefix$expanded"
+                fi
+                ;;
+              "+")
+                if [ -n "$SYSTEMD_LOOKUP_VALUE" ]; then
+                  prefix="$SYSTEMD_PARSED_VALUE"
+                  systemd_parse_env_value "$word" "$array_name"
+                  expanded="$SYSTEMD_PARSED_VALUE"
+                  SYSTEMD_PARSED_VALUE="$prefix$expanded"
+                fi
+                ;;
+            esac
+            index=$((index + ${#expr} + 3))
+            continue
+          fi
+        fi
+      fi
+      rest="${raw:index+1}"
+      if [[ "$rest" =~ ^([A-Za-z_][A-Za-z0-9_]*) ]]; then
+        name="${BASH_REMATCH[1]}"
+        systemd_lookup_env_value "$name" "$array_name"
+        SYSTEMD_PARSED_VALUE+="$SYSTEMD_LOOKUP_VALUE"
+        index=$((index + ${#name} + 1))
+        continue
+      fi
+    fi
+    SYSTEMD_PARSED_VALUE+="$char"
+    index=$((index + 1))
+  done
+}
+
+parse_systemd_env_file() {
+  local file="$1"
+  local array_name="$2"
+  local line=""
+  local name=""
+  local raw=""
+  local -n out="$array_name"
+
+  # shellcheck disable=SC2034 # out is a nameref to the caller's associative array.
+  out=()
+  while IFS= read -r line || [ -n "$line" ]; do
+    line="${line%$'\r'}"
+    line="$(ltrim_ws "$line")"
+    [ -n "$line" ] || continue
+    [ "${line:0:1}" != "#" ] || continue
+    [ "$line" != "${line#*=}" ] || continue
+
+    name="$(trim_ws "${line%%=*}")"
+    raw="${line#*=}"
+
+    [[ "$name" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || continue
+    case "$name" in
+      HTTP_PROXY|HTTPS_PROXY|ALL_PROXY|NO_PROXY|http_proxy|https_proxy|all_proxy|no_proxy) ;;
+      *) continue ;;
+    esac
+
+    systemd_parse_env_value "$raw" "$array_name"
+    # shellcheck disable=SC2034 # out is a nameref to the caller's associative array.
+    out["$name"]="$SYSTEMD_PARSED_VALUE"
+  done < "$file"
+}
+
+reject_symlinked_dir_chain() {
+  local label="$1"
+  local dir="$2"
+  local current="/"
+  local part=""
+  local rest=""
+  local -a parts=()
+
+  [[ "$dir" = /* ]] || fail "Internal error: non-absolute directory path for $label: $dir"
+  rest="${dir#/}"
+  IFS='/' read -r -a parts <<< "$rest"
+  for part in "${parts[@]}"; do
+    [ -n "$part" ] || continue
+    current="${current%/}/$part"
+    if [ -L "$current" ]; then
+      log "FAIL $label directory path has symlink component: $current"
+      return 1
+    fi
+  done
+  return 0
+}
+
+ensure_safe_directory() {
+  local label="$1"
+  local dir="$2"
+  local mode="$3"
+
+  reject_symlinked_dir_chain "$label" "$dir" || return 1
+  if [ -e "$dir" ] && [ ! -d "$dir" ]; then
+    log "FAIL $label path is not a directory: $dir"
+    return 1
+  fi
+  mkdir -p "$dir"
+  chmod "$mode" "$dir"
 }
 
 atomic_write_cache() {
   local cache_dir=""
   local tmp=""
 
-  required_source_ready || return 1
   cache_dir="$(dirname -- "$cache_path")"
 
   if [ "$dry_run" -eq 1 ]; then
     log "[dry-run] sync Codex proxy cache: $cache_path"
+    log "[dry-run] source validation skipped; install/sync would require: $source_env"
     return 0
   fi
 
-  mkdir -p "$cache_dir"
-  chmod 700 "$cache_dir"
+  required_source_ready || return 1
+  ensure_safe_directory "systemd environment.d directory" "$cache_dir" 700 || return 1
 
   tmp="$(mktemp "$cache_dir/.90-codex-proxy.conf.XXXXXX")"
   desired_cache_content > "$tmp"
@@ -312,6 +465,7 @@ install_file_atomically() {
   fi
 
   dir="$(dirname -- "$target")"
+  reject_symlinked_dir_chain "target directory" "$dir" || return 1
   mkdir -p "$dir"
   tmp="$(mktemp "$dir/.$(basename -- "$target").XXXXXX")"
   cp "$source" "$tmp"
@@ -346,7 +500,7 @@ next_backup_path() {
 startup_block() {
   cat <<'EOF'
 # >>> Kate Codex proxy startup >>>
-if [ -r "$HOME/.config/kate-proxy/load-codex-proxy.bash" ]; then
+if [ -n "${BASH_VERSION:-}" ] && [ -r "$HOME/.config/kate-proxy/load-codex-proxy.bash" ]; then
   # shellcheck disable=SC1091
   . "$HOME/.config/kate-proxy/load-codex-proxy.bash"
 fi
@@ -412,6 +566,7 @@ install_startup_block() {
   fi
 
   dir="$(dirname -- "$target")"
+  reject_symlinked_dir_chain "shell startup directory" "$dir" || return 1
   mkdir -p "$dir"
   tmp="$(mktemp "$dir/.$(basename -- "$target").kate-proxy.XXXXXX")"
   write_startup_without_blocks "$target" > "$tmp"
@@ -445,8 +600,7 @@ install_user_proxy() {
   fi
 
   if [ "$dry_run" -eq 0 ]; then
-    mkdir -p "$proxy_dir"
-    chmod 700 "$proxy_dir"
+    ensure_safe_directory "Kate proxy config directory" "$proxy_dir" 700 || return 1
   fi
 
   install_file_atomically "$loader_template" "$loader_path" 600
@@ -482,6 +636,7 @@ doctor_path_regular_mode() {
   local failed=0
   local mode=""
 
+  reject_symlinked_dir_chain "$label parent directory" "$(dirname -- "$path")" || return 1
   if [ ! -e "$path" ]; then
     log "FAIL $label missing: $path"
     return 1
@@ -514,6 +669,7 @@ doctor_directory_mode() {
   local expected_mode="$3"
   local mode=""
 
+  reject_symlinked_dir_chain "$label directory" "$path" || return 1
   if [ ! -d "$path" ] || [ -L "$path" ]; then
     log "FAIL $label missing or unsafe: $path"
     return 1
@@ -537,7 +693,7 @@ doctor_cache_matches_source() {
   local hash=""
 
   doctor_path_regular_mode "Codex proxy cache" "$cache_path" 600 || return 1
-  parse_env_file "$cache_path" CACHE_ENV
+  parse_systemd_env_file "$cache_path" CACHE_ENV
 
   for key in HTTP_PROXY HTTPS_PROXY ALL_PROXY NO_PROXY; do
     lower="$(lower_key "$key")"
@@ -601,6 +757,28 @@ startup_counts() {
   ' "$file"
 }
 
+managed_startup_block_is_safe() {
+  local file="$1"
+  awk -v start="$start_marker" -v finish="$end_marker" '
+    $0 == start { in_block = 1; next }
+    $0 == finish { in_block = 0; done = 1; next }
+    in_block == 1 {
+      if (index($0, "BASH_VERSION") > 0) {
+        has_bash_guard = 1
+      }
+      if (index($0, "-r \"$HOME/.config/kate-proxy/load-codex-proxy.bash\"") > 0) {
+        has_readable_loader_guard = 1
+      }
+      if (index($0, ". \"$HOME/.config/kate-proxy/load-codex-proxy.bash\"") > 0) {
+        sources_loader = 1
+      }
+    }
+    END {
+      exit !(done == 1 && has_bash_guard == 1 && has_readable_loader_guard == 1 && sources_loader == 1)
+    }
+  ' "$file"
+}
+
 doctor_startup_blocks() {
   local file=""
   local starts=0
@@ -610,6 +788,10 @@ doctor_startup_blocks() {
   local failed=0
 
   for file in "${startup_files[@]}"; do
+    if ! reject_symlinked_dir_chain "shell startup directory" "$(dirname -- "$file")"; then
+      failed=1
+      continue
+    fi
     if [ ! -f "$file" ] || [ -L "$file" ]; then
       log "FAIL shell startup file missing or unsafe: $file"
       failed=1
@@ -627,6 +809,9 @@ doctor_startup_blocks() {
       failed=1
     elif [ "$starts" -eq 1 ] && ! grep -Fq '.config/kate-proxy/load-codex-proxy.bash' "$file"; then
       log "FAIL shell startup block does not source Kate proxy loader: $file"
+      failed=1
+    elif [ "$starts" -eq 1 ] && ! managed_startup_block_is_safe "$file"; then
+      log "FAIL shell startup block lacks Bash/readable-loader guard: $file"
       failed=1
     fi
   done
@@ -675,53 +860,69 @@ doctor_user_manager_environment() {
   return "$failed"
 }
 
-find_hermes_dropin() {
-  local candidate=""
-
-  if [ -n "${KATE_HERMES_PROXY_DROPIN:-}" ]; then
-    [ -f "$KATE_HERMES_PROXY_DROPIN" ] || return 1
-    printf '%s\n' "$KATE_HERMES_PROXY_DROPIN"
-    return 0
-  fi
-
-  for candidate in \
-    "$HOME/.config/systemd/user/hermes.service.d/proxy.conf" \
-    "$HOME/.config/systemd/user/hermes-gateway.service.d/proxy.conf" \
-    "$HOME/.config/systemd/user/hermes-gateway@default.service.d/proxy.conf"; do
-    if [ -f "$candidate" ]; then
-      printf '%s\n' "$candidate"
-      return 0
-    fi
-  done
-  return 1
-}
-
 doctor_hermes_isolation() {
+  local candidate=""
   local dropin=""
+  local dropin_references_hermes=0
   local hermes_env="$HOME/.hermes/hermes-proxy.env"
   local key=""
   local failed=0
   local codex_hash=""
   local hermes_hash=""
+  local -a candidates=(
+    "$HOME/.config/systemd/user/hermes.service.d/proxy.conf"
+    "$HOME/.config/systemd/user/hermes-gateway.service.d/proxy.conf"
+    "$HOME/.config/systemd/user/hermes-gateway@default.service.d/proxy.conf"
+  )
+  local -a dropins=()
 
-  if ! dropin="$(find_hermes_dropin)"; then
+  if [ -n "${KATE_HERMES_PROXY_DROPIN:-}" ]; then
+    candidates+=("$KATE_HERMES_PROXY_DROPIN")
+  fi
+
+  for candidate in "${candidates[@]}"; do
+    [ -f "$candidate" ] || continue
+    for dropin in "${dropins[@]}"; do
+      [ "$dropin" = "$candidate" ] && continue 2
+    done
+    dropins+=("$candidate")
+  done
+
+  if [ -L "$hermes_env" ]; then
+    log "FAIL Hermes proxy env is a symlink: $hermes_env"
+    failed=1
+  fi
+
+  if [ "${#dropins[@]}" -eq 0 ]; then
+    if [ "$failed" -ne 0 ]; then
+      return 1
+    fi
     log "SKIP Hermes proxy drop-in not found"
     return 0
   fi
 
-  if ! grep -Fq '.hermes/hermes-proxy.env' "$dropin"; then
-    log "FAIL Hermes proxy drop-in does not reference ~/.hermes/hermes-proxy.env"
-    failed=1
-  fi
-  if grep -Fq '.hermes/codex-proxy.env' "$dropin"; then
-    log "FAIL Hermes proxy drop-in references Codex proxy source"
-    failed=1
-  fi
+  for dropin in "${dropins[@]}"; do
+    if grep -Fq '.hermes/hermes-proxy.env' "$dropin"; then
+      dropin_references_hermes=1
+    else
+      log "FAIL Hermes proxy drop-in does not reference ~/.hermes/hermes-proxy.env: $dropin"
+      failed=1
+    fi
+    if grep -Fq '.hermes/codex-proxy.env' "$dropin"; then
+      log "FAIL Hermes proxy drop-in references Codex proxy source: $dropin"
+      failed=1
+    fi
+  done
 
-  if [ -f "$hermes_env" ] && [ ! -L "$hermes_env" ]; then
-    parse_env_file "$hermes_env" HERMES_ENV
-    for key in HTTP_PROXY HTTPS_PROXY ALL_PROXY; do
-      if [ "${HERMES_ENV[$key]+set}" = "set" ] && [ -n "${HERMES_ENV[$key]}" ]; then
+  if [ "$dropin_references_hermes" -eq 1 ]; then
+    if doctor_path_regular_mode "Hermes proxy env" "$hermes_env" 600; then
+      parse_env_file "$hermes_env" HERMES_ENV
+      for key in HTTP_PROXY HTTPS_PROXY ALL_PROXY; do
+        if [ "${HERMES_ENV[$key]+set}" != "set" ] || [ -z "${HERMES_ENV[$key]}" ]; then
+          log "FAIL Hermes proxy env missing required key: $key"
+          failed=1
+          continue
+        fi
         codex_hash="$(hash_value "${PARSED_ENV[$key]}")"
         hermes_hash="$(hash_value "${HERMES_ENV[$key]}")"
         if [ "$codex_hash" = "$hermes_hash" ]; then
@@ -730,10 +931,13 @@ doctor_hermes_isolation() {
         else
           log "OK Hermes and Codex $key hashes differ: codex=sha256:$codex_hash hermes=sha256:$hermes_hash"
         fi
-      fi
-    done
+      done
+    else
+      failed=1
+    fi
   else
-    log "SKIP Hermes proxy env not found; hash separation not checked"
+    log "FAIL Hermes proxy env hash separation cannot be checked without hermes-proxy.env drop-in reference"
+    failed=1
   fi
 
   [ "$failed" -ne 0 ] || log "OK Hermes proxy drop-in keeps separate source"

@@ -84,7 +84,7 @@ EOF
 write_codex_source() {
   mkdir -p "$HOME/.hermes"
   {
-    printf 'export HTTP_PROXY="http://user:codex-secret@example.test:8080/path with space"\r\n'
+    printf '%s\r\n' 'export HTTP_PROXY="http://user:codex-secret@example.test:8080/path with space?token=\$dollar\\slash\"quote'\''single"'
     printf "HTTPS_PROXY='https://user:codex-secret@example.test:8443/single quoted'\r\n"
     printf 'ALL_PROXY="socks5://user:codex-secret@example.test:1080"\r\n'
     printf 'NO_PROXY="localhost,127.0.0.1,.example.test"\r\n'
@@ -155,7 +155,7 @@ assert_loader_parses_source() {
   unset HTTP_PROXY HTTPS_PROXY ALL_PROXY NO_PROXY http_proxy https_proxy all_proxy no_proxy
   # shellcheck source=/dev/null
   . "$HOME/.config/kate-proxy/load-codex-proxy.bash"
-  [ "$HTTP_PROXY" = "http://user:codex-secret@example.test:8080/path with space" ] ||
+  [ "$HTTP_PROXY" = 'http://user:codex-secret@example.test:8080/path with space?token=$dollar\slash"quote'\''single' ] ||
     fail "loader did not parse double-quoted CRLF value"
   [ "$HTTPS_PROXY" = "https://user:codex-secret@example.test:8443/single quoted" ] ||
     fail "loader did not parse single-quoted CRLF value"
@@ -163,6 +163,88 @@ assert_loader_parses_source() {
     fail "loader did not parse ALL_PROXY"
   [ "$NO_PROXY" = "localhost,127.0.0.1,.example.test" ] ||
     fail "loader did not parse NO_PROXY"
+}
+
+systemd_env_unescape() {
+  local raw="$1"
+  local index=0
+  local char=""
+  local next=""
+  local rest=""
+  local name=""
+  SYSTEMD_TEST_VALUE=""
+
+  while [ "$index" -lt "${#raw}" ]; do
+    char="${raw:index:1}"
+    if [ "$char" = "$" ] && [ $((index + 1)) -lt "${#raw}" ]; then
+      next="${raw:index+1:1}"
+      if [ "$next" = "$" ]; then
+        SYSTEMD_TEST_VALUE+="$"
+        index=$((index + 2))
+        continue
+      fi
+      rest="${raw:index+1}"
+      if [[ "$rest" =~ ^([A-Za-z_][A-Za-z0-9_]*) ]]; then
+        name="${BASH_REMATCH[1]}"
+        SYSTEMD_TEST_VALUE+="${!name-}"
+        index=$((index + ${#name} + 1))
+        continue
+      fi
+    fi
+    SYSTEMD_TEST_VALUE+="$char"
+    index=$((index + 1))
+  done
+}
+
+assert_cache_systemd_content() {
+  local cache="$HOME/.config/environment.d/90-codex-proxy.conf"
+  local line=""
+  local name=""
+  local raw=""
+  local expected_http='http://user:codex-secret@example.test:8080/path with space?token=$dollar\slash"quote'\''single'
+  local expected_http_raw='HTTP_PROXY=http://user:codex-secret@example.test:8080/path with space?token=$$dollar\slash"quote'\''single'
+  declare -A parsed_cache=()
+
+  if grep -Eq "^(${expected_http_raw%%=*}|HTTPS_PROXY|ALL_PROXY|NO_PROXY|http_proxy|https_proxy|all_proxy|no_proxy)=['\"]" "$cache"; then
+    fail "cache values must not use shell quote wrapping"
+  fi
+  grep -Fxq "$expected_http_raw" "$cache" ||
+    fail "cache must escape literal dollar signs using systemd environment.d syntax"
+
+  while IFS= read -r line || [ -n "$line" ]; do
+    [ "$line" != "${line#*=}" ] || continue
+    name="${line%%=*}"
+    raw="${line#*=}"
+    systemd_env_unescape "$raw"
+    parsed_cache["$name"]="$SYSTEMD_TEST_VALUE"
+  done < "$cache"
+
+  [ "${parsed_cache[HTTP_PROXY]}" = "$expected_http" ] ||
+    fail "systemd-style cache parser did not recover HTTP_PROXY"
+  [ "${parsed_cache[http_proxy]}" = "$expected_http" ] ||
+    fail "systemd-style cache parser did not recover http_proxy"
+}
+
+assert_managed_startup_guard() {
+  local file="$1"
+  awk '
+    $0 == "# >>> Kate Codex proxy startup >>>" { in_block = 1; next }
+    $0 == "# <<< Kate Codex proxy startup <<<" { in_block = 0; done = 1; next }
+    in_block == 1 {
+      if (index($0, "BASH_VERSION") > 0) {
+        has_bash_guard = 1
+      }
+      if (index($0, "-r \"$HOME/.config/kate-proxy/load-codex-proxy.bash\"") > 0) {
+        has_readable_loader_guard = 1
+      }
+      if (index($0, ". \"$HOME/.config/kate-proxy/load-codex-proxy.bash\"") > 0) {
+        sources_loader = 1
+      }
+    }
+    END {
+      exit !(done == 1 && has_bash_guard == 1 && has_readable_loader_guard == 1 && sources_loader == 1)
+    }
+  ' "$file" || fail "managed startup block must guard Bash-only loader"
 }
 
 write_systemd_stubs
@@ -174,8 +256,8 @@ original_home="$HOME"
 dry_home="$(mktemp -d)"
 HOME="$dry_home"
 export HOME
-write_codex_source
 bash "$script" install --dry-run
+bash "$script" sync --dry-run
 [ ! -e "$HOME/.config/kate-proxy" ] || fail "dry-run must not create proxy directory"
 [ ! -e "$HOME/.config/environment.d/90-codex-proxy.conf" ] ||
   fail "dry-run must not create cache"
@@ -183,9 +265,54 @@ HOME="$original_home"
 export HOME
 rm -rf -- "$dry_home"
 
+unsafe_home="$(mktemp -d)"
+HOME="$unsafe_home"
+export HOME
+write_codex_source
+unsafe_config_target="$(mktemp -d)"
+ln -s "$unsafe_config_target" "$HOME/.config"
+expect_fail bash "$script" sync
+HOME="$original_home"
+export HOME
+rm -f -- "$unsafe_home/.config"
+rm -f -- "$unsafe_home/.hermes/codex-proxy.env"
+rmdir "$unsafe_home/.hermes" "$unsafe_home" "$unsafe_config_target"
+
+unsafe_home="$(mktemp -d)"
+HOME="$unsafe_home"
+export HOME
+write_codex_source
+mkdir -p "$HOME/.config"
+unsafe_environment_target="$(mktemp -d)"
+ln -s "$unsafe_environment_target" "$HOME/.config/environment.d"
+expect_fail bash "$script" sync
+HOME="$original_home"
+export HOME
+rm -f -- "$unsafe_home/.config/environment.d"
+rm -f -- "$unsafe_home/.hermes/codex-proxy.env"
+rmdir "$unsafe_home/.config" "$unsafe_home/.hermes" "$unsafe_home" "$unsafe_environment_target"
+
+unsafe_home="$(mktemp -d)"
+HOME="$unsafe_home"
+export HOME
+write_codex_source
+write_existing_startup_files
+mkdir -p "$HOME/.config"
+unsafe_proxy_target="$(mktemp -d)"
+ln -s "$unsafe_proxy_target" "$HOME/.config/kate-proxy"
+expect_fail bash "$script" install
+HOME="$original_home"
+export HOME
+rm -f -- "$unsafe_home/.config/kate-proxy"
+rm -f -- "$unsafe_home/.hermes/codex-proxy.env" "$unsafe_home/.profile" "$unsafe_home/.bashrc"
+rmdir "$unsafe_home/.config" "$unsafe_home/.hermes" "$unsafe_home" "$unsafe_proxy_target"
+
 bash "$script" install
 assert_installed_shape
 assert_loader_parses_source
+assert_cache_systemd_content
+assert_managed_startup_guard "$HOME/.profile"
+assert_managed_startup_guard "$HOME/.bashrc"
 [ -s "$KATE_TEST_SYSTEMD_ENV" ] || fail "systemd stub was not updated"
 [ -s "$KATE_TEST_DBUS_ENV" ] || fail "DBus stub was not updated"
 [ "$(backup_count "$HOME/.profile")" -eq 1 ] || fail "profile backup missing"
@@ -202,6 +329,28 @@ if grep -Fq "codex-secret" "$doctor_out"; then
   fail "doctor output must not print proxy values"
 fi
 
+cache="$HOME/.config/environment.d/90-codex-proxy.conf"
+bad_cache="$cache.bad"
+while IFS= read -r line || [ -n "$line" ]; do
+  line="${line//\$\$dollar/__KATE_UNESCAPED_DOLLAR__}"
+  line="${line//__KATE_UNESCAPED_DOLLAR__/\$dollar}"
+  printf '%s\n' "$line"
+done < "$cache" > "$bad_cache"
+mv -f -- "$bad_cache" "$cache"
+expect_fail env -u dollar bash "$script" doctor
+bash "$script" sync
+
+cat > "$HOME/.profile" <<'EOF'
+# >>> Kate Codex proxy startup >>>
+if [ -r "$HOME/.config/kate-proxy/load-codex-proxy.bash" ]; then
+  . "$HOME/.config/kate-proxy/load-codex-proxy.bash"
+fi
+# <<< Kate Codex proxy startup <<<
+EOF
+expect_fail bash "$script" doctor
+write_existing_startup_files
+bash "$script" install
+
 write_legacy_startup_files
 [ "$(marker_count "$HOME/.profile")" -eq 0 ] || fail "legacy profile must not have managed marker"
 [ "$(legacy_count "$HOME/.profile")" -eq 1 ] || fail "legacy profile block missing"
@@ -216,6 +365,8 @@ fi
 bash "$script" install
 [ "$(marker_count "$HOME/.profile")" -eq 1 ] || fail "install must normalize legacy profile to managed block"
 [ "$(marker_count "$HOME/.bashrc")" -eq 1 ] || fail "install must normalize legacy bashrc to managed block"
+assert_managed_startup_guard "$HOME/.profile"
+assert_managed_startup_guard "$HOME/.bashrc"
 [ "$(legacy_count "$HOME/.profile")" -eq 0 ] || fail "install must remove legacy profile block"
 [ "$(legacy_count "$HOME/.bashrc")" -eq 0 ] || fail "install must remove legacy bashrc block"
 
@@ -255,7 +406,29 @@ expect_fail bash "$script" doctor
 bash "$script" sync
 bash "$script" doctor > /dev/null
 
+rm -f "$HOME/.config/systemd/user/hermes.service.d/proxy.conf"
 cp "$HOME/.hermes/codex-proxy.env" "$HOME/.hermes/hermes-proxy.env"
+bash "$script" doctor > "$tmp_home/no-hermes-dropin-doctor.out"
+grep -Fq "SKIP Hermes proxy drop-in not found" "$tmp_home/no-hermes-dropin-doctor.out" ||
+  fail "doctor must skip Hermes hash checks when no drop-ins exist"
+if grep -Fq "codex-secret" "$tmp_home/no-hermes-dropin-doctor.out"; then
+  fail "no-dropin doctor output must not print proxy values"
+fi
+
+rm -f "$HOME/.hermes/hermes-proxy.env"
+ln -s "$HOME/.hermes/codex-proxy.env" "$HOME/.hermes/hermes-proxy.env"
+expect_fail bash "$script" doctor
+rm -f "$HOME/.hermes/hermes-proxy.env"
+write_hermes_isolation
+
+cp "$HOME/.hermes/codex-proxy.env" "$HOME/.hermes/hermes-proxy.env"
+expect_fail bash "$script" doctor
+write_hermes_isolation
+
+rm -f "$HOME/.hermes/hermes-proxy.env"
+ln -s "$HOME/.hermes/codex-proxy.env" "$HOME/.hermes/hermes-proxy.env"
+expect_fail bash "$script" doctor
+rm -f "$HOME/.hermes/hermes-proxy.env"
 expect_fail bash "$script" doctor
 write_hermes_isolation
 
@@ -263,6 +436,27 @@ printf '[Service]\nEnvironmentFile=%s/.hermes/codex-proxy.env\n' "$HOME" \
   > "$HOME/.config/systemd/user/hermes.service.d/proxy.conf"
 expect_fail bash "$script" doctor
 write_hermes_isolation
+
+mkdir -p "$HOME/.config/systemd/user/hermes-gateway.service.d"
+printf '[Service]\nEnvironmentFile=%s/.hermes/codex-proxy.env\n' "$HOME" \
+  > "$HOME/.config/systemd/user/hermes-gateway.service.d/proxy.conf"
+expect_fail bash "$script" doctor
+rm -f "$HOME/.config/systemd/user/hermes-gateway.service.d/proxy.conf"
+
+mkdir -p "$HOME/.config/systemd/user/hermes-gateway@default.service.d"
+printf '[Service]\nEnvironmentFile=%s/.hermes/gateway-policy.env\n' "$HOME" \
+  > "$HOME/.config/systemd/user/hermes-gateway@default.service.d/proxy.conf"
+expect_fail bash "$script" doctor
+rm -f "$HOME/.config/systemd/user/hermes-gateway@default.service.d/proxy.conf"
+
+custom_dropin="$HOME/custom-hermes-dropin.conf"
+printf '[Service]\nEnvironmentFile=%s/.hermes/codex-proxy.env\n' "$HOME" > "$custom_dropin"
+(
+  export KATE_HERMES_PROXY_DROPIN="$custom_dropin"
+  expect_fail bash "$script" doctor
+)
+rm -f "$custom_dropin"
+
 bash "$script" doctor > /dev/null
 
 backup_root="$HOME/.kisa-backups/test-user-proxy"
