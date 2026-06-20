@@ -84,6 +84,7 @@ EOF
 write_codex_source() {
   mkdir -p "$HOME/.hermes"
   {
+    # shellcheck disable=SC2016 # Fixture intentionally contains literal shell syntax.
     printf '%s\r\n' 'export HTTP_PROXY="http://user:codex-secret@example.test:8080/path with space?token=\$dollar\\slash\"quote'\''single"'
     printf "HTTPS_PROXY='https://user:codex-secret@example.test:8443/single quoted'\r\n"
     printf 'ALL_PROXY="socks5://user:codex-secret@example.test:1080"\r\n'
@@ -155,6 +156,7 @@ assert_loader_parses_source() {
   unset HTTP_PROXY HTTPS_PROXY ALL_PROXY NO_PROXY http_proxy https_proxy all_proxy no_proxy
   # shellcheck source=/dev/null
   . "$HOME/.config/kate-proxy/load-codex-proxy.bash"
+  # shellcheck disable=SC2016 # Expected value intentionally contains a literal dollar sign.
   [ "$HTTP_PROXY" = 'http://user:codex-secret@example.test:8080/path with space?token=$dollar\slash"quote'\''single' ] ||
     fail "loader did not parse double-quoted CRLF value"
   [ "$HTTPS_PROXY" = "https://user:codex-secret@example.test:8443/single quoted" ] ||
@@ -201,7 +203,9 @@ assert_cache_systemd_content() {
   local line=""
   local name=""
   local raw=""
+  # shellcheck disable=SC2016 # Expected value intentionally contains a literal dollar sign.
   local expected_http='http://user:codex-secret@example.test:8080/path with space?token=$dollar\slash"quote'\''single'
+  # shellcheck disable=SC2016 # environment.d encodes literal '$' as '$$'.
   local expected_http_raw='HTTP_PROXY=http://user:codex-secret@example.test:8080/path with space?token=$$dollar\slash"quote'\''single'
   declare -A parsed_cache=()
 

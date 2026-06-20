@@ -135,6 +135,7 @@ parse_env_file() {
   local line=""
   local name=""
   local raw=""
+  # shellcheck disable=SC2178 # out is a nameref to the caller's associative array.
   local -n out="$array_name"
 
   # shellcheck disable=SC2034 # out is a nameref to the caller's associative array.
