@@ -108,7 +108,8 @@ desired_matches() {
 }
 
 next_backup_path() {
-  local base="$wrapper_path.backup-$(date +%Y%m%d-%H%M%S)"
+  local base
+  base="$wrapper_path.backup-$(date +%Y%m%d-%H%M%S)"
   local candidate="$base"
   local index=1
   while [ -e "$candidate" ] || [ -L "$candidate" ]; do
