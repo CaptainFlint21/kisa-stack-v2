@@ -1,0 +1,4 @@
+interface:
+  display_name: "Codex Delegator"
+  short_description: "Delegate repository work to Codex CLI through MCP."
+  default_prompt: "Delegate this repository coding task to the official Codex MCP server. Resolve an absolute cwd, start with the codex tool using sandbox workspace-write and approval-policy never, retain the returned threadId, and continue with codex-reply using only that threadId plus a prompt; codex-reply inherits the initial thread's sandbox and approval policy. Continue until implementation and local verification are complete. Codex may only edit files inside cwd and run local checks; Hermes owns branch, commit, push, and draft PR orchestration. Treat sudo, network, outside-cwd writes, elicitation-not-supported, and approval-related errors as blockers, not retryable approval flows."

@@ -1,0 +1,8 @@
+# Safe first-stage profile for Codex CLI + Hermes.
+researcher
+gamer-signal
+stream-timecodes
+elevenlabs-living-voice
+emotional-support
+telegram-chat-wiki
+codex-delegator

@@ -1,0 +1,46 @@
+name: Validate KISA Stack
+
+on:
+  push:
+    branches:
+      - main
+      - codex/kate-hermes-integration
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate Bash syntax
+        run: |
+          bash -n install.sh
+          bash -n tests/test-install.sh
+          bash -n tests/test-codex-delegator-contract.sh
+          bash -n tests/test-codex-wrapper.sh
+          bash -n tests/test-kate-telegram-policy.sh
+          bash -n deploy/kate/bootstrap.sh
+          bash -n deploy/kate/codex-wrapper.sh
+          bash -n deploy/kate/rollback.sh
+          bash -n deploy/kate/verify.sh
+          for hook in deploy/kate/hooks/*.sh; do bash -n "$hook"; done
+
+      - name: Run ShellCheck
+        run: |
+          shellcheck install.sh tests/test-install.sh \
+            tests/test-codex-delegator-contract.sh \
+            tests/test-codex-wrapper.sh \
+            tests/test-kate-telegram-policy.sh \
+            deploy/kate/bootstrap.sh deploy/kate/codex-wrapper.sh deploy/kate/rollback.sh \
+            deploy/kate/verify.sh deploy/kate/hooks/*.sh
+
+      - name: Run installer regression tests
+        run: |
+          bash tests/test-install.sh
+          bash tests/test-codex-delegator-contract.sh
+          bash tests/test-codex-wrapper.sh
+          bash tests/test-kate-telegram-policy.sh
