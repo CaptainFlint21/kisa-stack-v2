@@ -45,10 +45,10 @@ _kate_parse_env_value() {
       if [ "$char" = '"' ]; then
         return 0
       fi
-      if [ "$char" = '\' ] && [ $((index + 1)) -lt "${#raw}" ]; then
+      if [ "$char" = "\\" ] && [ $((index + 1)) -lt "${#raw}" ]; then
         next="${raw:index+1:1}"
         case "$next" in
-          '$'|'`'|'"'|'\'|$'\n')
+          '$'|'`'|'"'|\\|$'\n')
             KATE_PARSED_VALUE+="$next"
             index=$((index + 2))
             continue

@@ -170,15 +170,17 @@ write_codex_source
 write_hermes_isolation
 write_existing_startup_files
 
+original_home="$HOME"
 dry_home="$(mktemp -d)"
-(
-  export HOME="$dry_home"
-  write_codex_source
-  bash "$script" install --dry-run
-  [ ! -e "$HOME/.config/kate-proxy" ] || fail "dry-run must not create proxy directory"
-  [ ! -e "$HOME/.config/environment.d/90-codex-proxy.conf" ] ||
-    fail "dry-run must not create cache"
-)
+HOME="$dry_home"
+export HOME
+write_codex_source
+bash "$script" install --dry-run
+[ ! -e "$HOME/.config/kate-proxy" ] || fail "dry-run must not create proxy directory"
+[ ! -e "$HOME/.config/environment.d/90-codex-proxy.conf" ] ||
+  fail "dry-run must not create cache"
+HOME="$original_home"
+export HOME
 rm -rf -- "$dry_home"
 
 bash "$script" install

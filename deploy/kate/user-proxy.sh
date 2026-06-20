@@ -77,7 +77,7 @@ ltrim_ws() {
 
 lower_key() {
   local key="$1"
-  printf '%s' "$key" | tr 'A-Z' 'a-z'
+  printf '%s' "$key" | tr '[:upper:]' '[:lower:]'
 }
 
 parse_env_value() {
@@ -109,10 +109,10 @@ parse_env_value() {
       if [ "$char" = '"' ]; then
         return 0
       fi
-      if [ "$char" = '\' ] && [ $((index + 1)) -lt "${#raw}" ]; then
+      if [ "$char" = "\\" ] && [ $((index + 1)) -lt "${#raw}" ]; then
         next="${raw:index+1:1}"
         case "$next" in
-          '$'|'`'|'"'|'\'|$'\n')
+          '$'|'`'|'"'|\\|$'\n')
             PARSED_VALUE+="$next"
             index=$((index + 2))
             continue
@@ -137,6 +137,7 @@ parse_env_file() {
   local raw=""
   local -n out="$array_name"
 
+  # shellcheck disable=SC2034 # out is a nameref to the caller's associative array.
   out=()
   while IFS= read -r line || [ -n "$line" ]; do
     line="${line%$'\r'}"
@@ -159,6 +160,7 @@ parse_env_file() {
     esac
 
     parse_env_value "$raw" || continue
+    # shellcheck disable=SC2034 # out is a nameref to the caller's associative array.
     out["$name"]="$PARSED_VALUE"
   done < "$file"
 }
@@ -329,7 +331,8 @@ install_file_atomically() {
 
 next_backup_path() {
   local target="$1"
-  local base="$target.kate-proxy-backup-$(date +%Y%m%d-%H%M%S)"
+  local base=""
+  base="$target.kate-proxy-backup-$(date +%Y%m%d-%H%M%S)"
   local candidate="$base"
   local index=1
 
