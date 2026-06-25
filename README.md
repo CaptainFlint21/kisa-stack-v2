@@ -74,6 +74,23 @@
 
 Для suno-music дополнительно нужен API-ключ EvoLink: скопируй `.env.example` в `.env` рядом со скриптами скилла.
 
+## Codex Desktop + Kate
+
+Ветка `codex/desktop-kate-stack` добавляет отдельный стек, не основанный на
+изменённом `main` форка:
+
+```text
+Codex Desktop (Windows) → встроенное SSH-подключение → Kate (Linux worker)
+```
+
+- [Windows Codex Desktop](deploy/windows-codex-desktop/README.md)
+- [Kate worker](deploy/kate-worker/README.md)
+
+Кроссплатформенный менеджер поддерживает `install`, `sync`, `doctor`,
+`rollback` и `--dry-run`. Он устанавливает Codex skills в актуальный
+user-scope каталог `~/.agents/skills`, сохраняет существующий `AGENTS.md`,
+объединяет hooks без удаления сторонних handlers и не записывает secrets в Git.
+
 ## Совместимость
 
 | Рантайм | Скиллы | Конфиг | Примечания |

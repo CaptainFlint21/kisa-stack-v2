@@ -1,0 +1,7 @@
+# Safe default profile for Codex Desktop on the controlling Windows PC.
+researcher
+gamer-signal
+stream-timecodes
+elevenlabs-living-voice
+emotional-support
+telegram-chat-wiki

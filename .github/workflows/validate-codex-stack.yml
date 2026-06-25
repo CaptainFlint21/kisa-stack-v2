@@ -1,0 +1,39 @@
+name: Validate Codex Desktop stack
+
+on:
+  push:
+    branches:
+      - codex/desktop-kate-stack
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  node-regression:
+    strategy:
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - run: node --check deploy/codex-stack/kisa.mjs
+      - run: node --check deploy/codex-stack/hooks/wiki-hook.mjs
+      - run: node --check tests/test-codex-stack.mjs
+      - run: node tests/test-codex-stack.mjs
+
+  shell-syntax:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          bash -n \
+            deploy/kate-worker/bootstrap.sh \
+            deploy/kate-worker/doctor.sh \
+            deploy/kate-worker/kisa-worker.sh \
+            deploy/kate-worker/verify.sh

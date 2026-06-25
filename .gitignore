@@ -8,3 +8,7 @@
 __pycache__/
 node_modules/
 *.pyc
+
+# Local KISA runtime state
+LLM Wiki/
+.kisa-test/
